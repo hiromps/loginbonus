@@ -1,103 +1,248 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { Flame, Plus, Edit2, Trash2 } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { CategoryStreak } from "@/components/CategoryStreak";
+import { StreakStats } from "@/components/StreakStats";
+import { MilestoneDisplay } from "@/components/MilestoneDisplay";
+import { useToast } from "@/hooks/use-toast";
+
+interface Category {
+  id: number;
+  name: string;
+  streak: number;
+  lastLogin: string | null;
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const { toast } = useToast();
+  const [categories, setCategories] = useState<Category[]>([
+    { id: 1, name: "学習", streak: 0, lastLogin: null },
+    { id: 2, name: "運動", streak: 0, lastLogin: null },
+    { id: 3, name: "読書", streak: 0, lastLogin: null },
+  ]);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    const savedData = localStorage.getItem("streakData");
+    if (savedData) {
+      setCategories(JSON.parse(savedData));
+    }
+  }, []);
+
+  useEffect(() => {
+    // Check for streak resets at midnight
+    const checkMidnight = () => {
+      const now = new Date();
+      categories.forEach((category) => {
+        if (category.lastLogin) {
+          const lastLogin = new Date(category.lastLogin);
+          if (lastLogin.getDate() !== now.getDate()) {
+            handleStreakReset(category.id);
+          }
+        }
+      });
+    };
+
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0);
+    const msUntilMidnight = midnight.getTime() - new Date().getTime();
+
+    const timer = setTimeout(checkMidnight, msUntilMidnight);
+    return () => clearTimeout(timer);
+  }, [categories]);
+
+  const handleStreakReset = (categoryId: number) => {
+    setCategories((prev) =>
+      prev.map((cat) =>
+        cat.id === categoryId
+          ? {
+              ...cat,
+              streak: 0,
+              lastLogin: null,
+            }
+          : cat
+      )
+    );
+  };
+
+  const handleLogin = (categoryId: number) => {
+    const now = new Date();
+    setCategories((prev) =>
+      prev.map((cat) => {
+        if (cat.id === categoryId) {
+          const lastLogin = cat.lastLogin ? new Date(cat.lastLogin) : null;
+          const isConsecutive =
+            lastLogin &&
+            now.getDate() - lastLogin.getDate() === 1 &&
+            now.getMonth() === lastLogin.getMonth() &&
+            now.getFullYear() === lastLogin.getFullYear();
+
+          const newStreak = isConsecutive ? cat.streak + 1 : 1;
+
+          if (newStreak > cat.streak && [7, 30, 100, 365].includes(newStreak)) {
+            toast({
+              title: "🎉 マイルストーン達成！",
+              description: `${cat.name}で${newStreak}日連続達成しました！`,
+            });
+          }
+
+          return {
+            ...cat,
+            streak: newStreak,
+            lastLogin: now.toISOString(),
+          };
+        }
+        return cat;
+      })
+    );
+  };
+
+  const handleAddCategory = () => {
+    if (newCategoryName.trim()) {
+      const newId = Math.max(...categories.map(c => c.id), 0) + 1;
+      setCategories(prev => [...prev, {
+        id: newId,
+        name: newCategoryName.trim(),
+        streak: 0,
+        lastLogin: null
+      }]);
+      setNewCategoryName("");
+      setIsDialogOpen(false);
+      toast({
+        title: "カテゴリーを追加しました",
+        description: `${newCategoryName}を新しく追加しました。`,
+      });
+    }
+  };
+
+  const handleEditCategory = () => {
+    if (editingCategory && editingCategory.name.trim()) {
+      setCategories(prev => prev.map(cat => 
+        cat.id === editingCategory.id 
+          ? { ...cat, name: editingCategory.name.trim() }
+          : cat
+      ));
+      setEditingCategory(null);
+      setIsDialogOpen(false);
+      toast({
+        title: "カテゴリーを更新しました",
+        description: `カテゴリー名を${editingCategory.name}に変更しました。`,
+      });
+    }
+  };
+
+  const handleDeleteCategory = (categoryId: number) => {
+    const category = categories.find(c => c.id === categoryId);
+    if (category) {
+      setCategories(prev => prev.filter(c => c.id !== categoryId));
+      toast({
+        title: "カテゴリーを削除しました",
+        description: `${category.name}を削除しました。`,
+      });
+    }
+  };
+
+  useEffect(() => {
+    localStorage.setItem("streakData", JSON.stringify(categories));
+  }, [categories]);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-background to-secondary">
+      <main className="container mx-auto px-4 py-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-12"
+        >
+          <h1 className="text-4xl font-bold mb-4">継続の炎</h1>
+          <p className="text-muted-foreground">
+            毎日の達成を記録し、継続の力を実感しよう
+          </p>
+        </motion.div>
+
+        <div className="flex justify-end mb-6">
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={() => {
+                setEditingCategory(null);
+                setNewCategoryName("");
+              }}>
+                <Plus className="mr-2 h-4 w-4" />
+                新しいカテゴリー
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {editingCategory ? "カテゴリーの編集" : "新しいカテゴリーの追加"}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <Input
+                  placeholder="カテゴリー名を入力"
+                  value={editingCategory ? editingCategory.name : newCategoryName}
+                  onChange={(e) => {
+                    if (editingCategory) {
+                      setEditingCategory({ ...editingCategory, name: e.target.value });
+                    } else {
+                      setNewCategoryName(e.target.value);
+                    }
+                  }}
+                />
+                <Button onClick={editingCategory ? handleEditCategory : handleAddCategory}>
+                  {editingCategory ? "更新" : "追加"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {categories.map((category) => (
+            <div key={category.id} className="relative">
+              <CategoryStreak
+                category={category}
+                onLogin={() => handleLogin(category.id)}
+              />
+              <div className="absolute top-2 right-2 flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setEditingCategory(category);
+                    setIsDialogOpen(true);
+                  }}
+                >
+                  <Edit2 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDeleteCategory(category.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-12">
+          <StreakStats categories={categories} />
+        </div>
+
+        <div className="mt-12">
+          <MilestoneDisplay categories={categories} />
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
 }
